@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context" xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns:aop="http://www.springframework.org/schema/aop" xmlns:dubbo="http://code.alibabatech.com/schema/dubbo"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd http://code.alibabatech.com/schema/dubbo http://code.alibabatech.com/schema/dubbo/dubbo.xsd">
+
+    <context:component-scan base-package="com.ccit"/>
+
+    <context:property-placeholder location="classpath:config.properties"/>
+
+    <bean id="dataSource" class="com.alibaba.druid.pool.DruidDataSource">
+        <property name="driverClassName" value="${jdbc.driverClass}"/>
+        <property name="url" value="${jdbc.url}"/>
+        <property name="username" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+    </bean>
+
+    <bean id="sessionFactory" class="org.springframework.orm.hibernate4.LocalSessionFactoryBean">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="packagesToScan" value="com.ccit.bean"/>
+        <property name="hibernateProperties">
+            <props>
+                <prop key="cache.use_second_level_cache">true</prop>
+                <prop key="show_sql">true</prop>
+                <prop key="format_sql">true</prop>
+                <prop key="hbm2ddl.auto">update</prop>
+                <prop key="hibernate.cache.use_query_cache">true</prop>
+                <prop key="hibernate.cache.region.factory_class">org.hibernate.cache.ehcache.EhCacheRegionFactory</prop>
+                <prop key="dialect">org.hibernate.dialect.MySQLDialect</prop>
+                <prop key="hibernate.cache.provider_configuration_file_resource_path">ehcache.xml</prop>
+            </props>
+        </property>
+    </bean>
+
+    <bean id="transactionManager" class="org.springframework.orm.hibernate4.HibernateTransactionManager">
+        <property name="sessionFactory" ref="sessionFactory"/>
+    </bean>
+
+    <bean id="jedisPoolConfig" class="redis.clients.jedis.JedisPoolConfig">
+
+    </bean>
+
+    <bean id="redisClusterConfiguration" class="org.springframework.data.redis.connection.RedisClusterConfiguration">
+        <property name="maxRedirects" value="6"/>
+        <property name="clusterNodes">
+            <set>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg index="0" value="123.207.214.54"/>
+                    <constructor-arg index="1" value="7000"/>
+                </bean>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg index="0" value="123.207.214.54"/>
+                    <constructor-arg index="1" value="7001"/>
+                </bean>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg index="0" value="123.207.214.54"/>
+                    <constructor-arg index="1" value="7002"/>
+                </bean>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg index="0" value="123.207.214.54"/>
+                    <constructor-arg index="1" value="7003"/>
+                </bean>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg index="0" value="123.207.214.54"/>
+                    <constructor-arg index="1" value="7004"/>
+                </bean>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg index="0" value="123.207.214.54"/>
+                    <constructor-arg index="1" value="7005"/>
+                </bean>
+            </set>
+        </property>
+    </bean>
+
+    <bean id="jedisConnectionFactory" class="org.springframework.data.redis.connection.jedis.JedisConnectionFactory">
+        <constructor-arg  ref="redisClusterConfiguration"/>
+        <property name="poolConfig" ref="jedisPoolConfig"/>
+    </bean>
+
+    <bean id="redisTemplate" class="org.springframework.data.redis.core.RedisTemplate">
+        <property name="connectionFactory" ref="jedisConnectionFactory"/>
+        <property name="keySerializer">
+            <bean class="org.springframework.data.redis.serializer.StringRedisSerializer"/>
+        </property>
+        <property name="valueSerializer">
+            <bean class="org.springframework.data.redis.serializer.JdkSerializationRedisSerializer"/>
+        </property>
+    </bean>
+
+    <tx:advice id="transactionInterceptor" transaction-manager="transactionManager">
+        <tx:attributes>
+            <tx:method name="*" isolation="DEFAULT" propagation="REQUIRED"/>
+        </tx:attributes>
+    </tx:advice>
+
+    <bean id="loginInterceptor" class="com.ccit.bean.LoginInterceptor"/>
+
+    <bean id="redisCache" class="com.ccit.servlet.RedisCache"/>
+    <aop:aspectj-autoproxy/>
+    <aop:config>
+        <aop:pointcut id="insert" expression="execution(* com.ccit.service.*.*())"/>
+        <aop:advisor pointcut-ref="insert" advice-ref="transactionInterceptor"/>
+        <aop:advisor pointcut-ref="insert" advice-ref="redisCache"/>
+        <!--<aop:aspect ref="loginInterceptor">-->
+            <!--<aop:pointcut id="test" expression="execution(* com.ccit.service.*.*())"/>-->
+            <!--<aop:before method="before" pointcut-ref="test"/>-->
+            <!--<aop:after method="after" pointcut-ref="test"/>-->
+        <!--</aop:aspect>-->
+    </aop:config>
+
+    <bean id="mqConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+        <property name="brokerURL" value="failover:(tcp://123.207.214.54:61616)"/>
+    </bean>
+
+    <bean id="mqQueue" class="org.apache.activemq.command.ActiveMQQueue">
+        <constructor-arg value="testSpringQueue"/>
+    </bean>
+
+    <bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="mqConnectionFactory"/>
+        <property name="defaultDestination" ref="mqQueue"/>
+        <property name="receiveTimeout" value="10000"/>
+    </bean>
+
+
+    <!--提供方应用信息-->
+    <dubbo:application name="provider"/>
+    <!--使用注册中心暴露服务地址-->
+    <dubbo:registry address="zookeeper://123.207.214.54:2181"/>
+    <!--用dubbo协议在20880端口暴露服务-->
+    <dubbo:protocol name="dubbo"  port="20880"/>
+    <!--声明需要暴露服务的接口-->
+    <dubbo:service interface="com.ccit.service.DemoService" ref="demoService"/>
+
+    <bean id="demoService" class="com.ccit.service.impl.DemoServiceImpl"/>
+
+</beans>
